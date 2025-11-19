@@ -4,8 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"time"
-     
+
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -18,7 +17,7 @@ func main() {
 	app := pocketbase.New()
 
 	var hooksDir string = os.Getenv("PB_HOOKS_DIR")
-	var hooksWatch bool = true
+	var hooksWatch bool = false
 	var hooksPool int = 25
 	var migrationsDir string
 	var automigrate bool = true
@@ -84,14 +83,18 @@ func main() {
 
 	ghupdate.MustRegister(app, app.RootCmd, ghupdate.Config{})
 
-	app.OnAfterBootstrap().PreAdd(func(e *core.BootstrapEvent) error {
-		app.Dao().ModelQueryTimeout = time.Duration(queryTimeout) * time.Second
+	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		log.Println("Custom logic executed during application bootstrap!")
+		e.App.Settings().Batch.Timeout = int64(queryTimeout) //time.Duration(int64(queryTimeout)) * time.Second
 		return nil
 	})
 
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		e.Router.GET("/*", apis.StaticDirectoryHandler(os.DirFS(publicDir), indexFallback))
-		return nil
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.GET("/", apis.Static(os.DirFS(publicDir), indexFallback))
+		return e.Next()
 	})
 
 	if err := app.Start(); err != nil {
